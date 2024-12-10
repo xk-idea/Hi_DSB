@@ -17,10 +17,8 @@ def mkdir(path):
     else:
         return False
 
-
 def savetxt(filename, x):
     np.savetxt(filename, x, delimiter='\t', fmt='%s')
-
 
 def sort_list(list_in):
     list_out = sorted(list_in, key=lambda items: int(items.split('\t')[1]))
@@ -29,7 +27,6 @@ def sort_list(list_in):
 
 def tetrahedron_volume(a, b, c, d):
     return np.abs(np.einsum('ij,ij->i', a - d, np.cross(b - d, c - d))) / 6
-
 
 def concave_hull_volume(pts, lenCutoff):
     dt = Delaunay(pts)  # tetrahedrons formed up with 4 points
@@ -66,105 +63,92 @@ def concave_hull_volume(pts, lenCutoff):
     return vol, len(pts) / float(vol), float(sum(min2max)) / len(min2max), float(
         count_valid_dts) / count_total_dts  # point density
 
-
 def get_density(pos):
     lenCutoff = 1000
     vol, density, min2max, validprop = concave_hull_volume(pos, lenCutoff)
     return vol, density
 
-def simulate_random_walk_volume(total_loop,persistence_length, kuhn_segment_length, num_steps):
+def simulate_random_walk_volume(total_loop, persistence_length, kuhn_segment_length, num_steps, cache=None):
+    if cache is not None and num_steps in cache:
+        return cache[num_steps]
+
     temp = []
-    for l in range(1,total_loop+1): 
+    for l in range(1, total_loop + 1): 
+
         polymer_chain = np.zeros((num_steps, 3))
+
         for step in range(1, num_steps):
+
             step_length = kuhn_segment_length
             step_direction = np.random.normal(size=3)
             step_direction /= np.linalg.norm(step_direction)
             step_direction *= step_length
-            step_direction = (1 - 1/persistence_length) * step_direction + \
-                             (1/persistence_length) * polymer_chain[step-1, :]
-            polymer_chain[step, :] = polymer_chain[step-1, :] + step_direction
+
+            step_direction = (1 - 1 / persistence_length) * step_direction + \
+                            (1 / persistence_length) * polymer_chain[step - 1, :]
+
+
+            polymer_chain[step, :] = polymer_chain[step - 1, :] + step_direction
         vol, density = get_density(polymer_chain)
         temp.append(vol)
-    return max(temp)
 
-persistence_length = 50 
-kuhn_segment_length = 2 * persistence_length  # Kuhn segment 
-total_loop = 100
+    max_vol = max(temp)
+    if cache is not None:
+        cache[num_steps] = max_vol
 
-df_coordinate = pd.read_csv('XYZ/all_coordinate',sep = '\t')
-df_tad = pd.read_csv('0.NHEK_All_chr_TAD',sep = '\t',header = None)
+    return max_vol
 
-dic_coordiante = {}
-mkdir('3.each_TAD_coordinate')
-for i in range(len(df_coordinate)):
-    if df_coordinate.iloc[i,0] not in dic_coordiante:
-        dic_coordiante[df_coordinate.iloc[i,0]] = []
-        dic_coordiante[df_coordinate.iloc[i, 0]].append(df_coordinate.iloc[i,:].values.tolist())
-    else:
-        dic_coordiante[df_coordinate.iloc[i, 0]].append(df_coordinate.iloc[i, :].values.tolist())
 
-dic_tad = {}
-for i in range(len(df_tad)):
-    if df_tad.iloc[i,0] not in dic_tad:
-        dic_tad[df_tad.iloc[i,0]] = []
-        dic_tad[df_tad.iloc[i, 0]].append(df_tad.iloc[i,:].values.tolist())
-    else:
-        dic_tad[df_tad.iloc[i, 0]].append(df_tad.iloc[i, :].values.tolist())
+persistence_length = 50  
+kuhn_segment_length = 2 * persistence_length  # Kuhn segment 长度
+total_loop = 10
 
-df_coordinate.index = df_coordinate.apply(lambda x:'_'.join(map(str,x[:3])),axis = 1)
-for k in dic_tad:
-    for v in dic_tad[k]:
-        tad_start = v[1]
-        tad_end = v[2]
-        if ((tad_end-tad_start)/10000) < 5 : 
-            continue
-        tad_coordinate = []
-        save_tad_coordinate = []
-        for v_c in dic_coordiante[k]:
-            coor_start = v_c[1]
-            coor_end = v_c[2]
-            if int(tad_start)+1 <= int(coor_start) and int(tad_end) >= int(coor_end):
-                tad_coordinate.append(v_c[4:])
-                save_tad_coordinate.append([v_c[i] for i in range(len(v_c)) if i not in [3]])
-        savetxt(f'3.each_TAD_coordinate/{"_".join(map(str, v))}', save_tad_coordinate)
-
-        if len(tad_coordinate) == 0 :
-            v.append(str(0))
-            continue
-        tad_coordinate_array = np.array(tad_coordinate)
-        if ((tad_end-tad_start)/10000)*0.8 > len(tad_coordinate_array):
-            v.append(str(0))
-            continue
-        vol, density = get_density(tad_coordinate_array)
-        v.append(str(vol))
-        num_steps = (v[2] - v[1]) // 10000
-        polymer_chain_vol = simulate_random_walk_volume(total_loop,persistence_length, kuhn_segment_length, num_steps)
-        v.append(str(polymer_chain_vol))
-        nor = float(vol)/float(polymer_chain_vol)
-        v.append(str(float(vol)/float(polymer_chain_vol)))
-
-        hull = ConvexHull(tad_coordinate_array)
-        hull_vertices = tad_coordinate_array[hull.vertices]
-        center = np.mean(hull_vertices, axis=0)
-        point1 = center
-        distance = []
-        for ar in tad_coordinate_array:
-            point2 = ar
-            ojld = math.sqrt((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2 + (point2[2] - point1[2]) ** 2)
-            distance.append(ojld)
-        average_distance = sum(distance)/len(tad_coordinate_array)
-        v.append(str(average_distance))
-
+path= '2.allDSB/3.run_FLAMINGO_top'
+dirs = os.listdir(path)
 res = []
-res.append('chr'+'\t'+'start'+'\t'+'end'+'\t'+'TAD_volume'+'\t'+'polymer_volume'+'\t'+'TCI'+'\t'+'average_ojld_distance')
-for key in dic_tad:
-    for value in dic_tad[key]:
-        res.append('\t'.join(map(str,value)))
+res.append('chr' + '\t' + 'start' + '\t' + 'end' + '\t' + 'TAD_volume' + '\t' + 'polymer_volume' + '\t' + 'TCI' + '\t' + 'average_ojld_distance' )
 
-savetxt('3.TAD_volume',res)
+polymer_volume_cache = {}
+for di in dirs:
+    if len(os.listdir(path + '/' + di)) !=2:
+        continue
+    f = path + '/' + di + '/coordinate'
+    df = pd.read_csv(f,sep = '\t',header = None,skiprows=1)
+    df_coor = df.iloc[:,1:].values.tolist()
+    coor_array = np.array(df_coor)
+    if len(coor_array) <= 4:
+        continue
+
+    vol, density = get_density(coor_array)
+
+    start = int(di.split('_')[1])
+    end = int(di.split('_')[2])
+    num_steps = (end - start) // 10000
+    if num_steps in polymer_volume_cache:
+        polymer_chain_vol = polymer_volume_cache[num_steps]
+    else:
+        polymer_chain_vol = simulate_random_walk_volume(total_loop, persistence_length, kuhn_segment_length, num_steps,
+                                                        cache=polymer_volume_cache)
 
 
+    nor = float(vol) / float(polymer_chain_vol)
+
+
+
+    hull = ConvexHull(coor_array)
+    hull_vertices = coor_array[hull.vertices]
+    center = np.mean(hull_vertices, axis=0)
+    point1 = center
+    distance = []
+    for ar in coor_array:
+        point2 = ar
+        ojld = math.sqrt((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2 + (point2[2] - point1[2]) ** 2)
+        distance.append(ojld)
+    average_distance = sum(distance) / len(coor_array)
+
+    res.append(di.split('_')[0]+'\t'+di.split('_')[1]+'\t'+di.split('_')[2] + '\t' + str(vol) + '\t' + str(polymer_chain_vol) + '\t' + str(nor)+'\t'+str(average_distance))
+
+savetxt('3.TAD_volume_sameTLsameRW', res)
 
 
 
